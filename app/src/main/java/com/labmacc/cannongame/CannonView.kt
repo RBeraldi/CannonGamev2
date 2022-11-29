@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import androidx.core.graphics.withMatrix
+import java.lang.Math.abs
 import java.lang.Math.pow
 import kotlin.math.asin
 import kotlin.math.cos
@@ -25,7 +26,6 @@ class CannonView(context: Context?) : View(context), View.OnTouchListener {
         State.basket = BitmapFactory.
         decodeStream(getContext().
         assets.open("basket.png"))
-        State.basket = Bitmap.createScaledBitmap(State.basket, 150, 150, false)
         //State.basket.reconfigure(20,20, Bitmap.Config.ARGB_8888)
 
     }
@@ -40,46 +40,48 @@ class CannonView(context: Context?) : View(context), View.OnTouchListener {
             maxRange= speed* speed/ gravity
 
             landscape = Bitmap.createScaledBitmap(landscape, w, h, false)
-
+            basket = Bitmap.createScaledBitmap(basket, 150, 150, false)
+            basketMatrix.setTranslate(w* basketX,h-200f)
             Log.i("RANGE",""+ maxRange)
         }
     }
     override fun onDraw(cv: Canvas) {
         super.onDraw(cv)
 
-        cv.drawBitmap(State.landscape,0f,0f,State.ballPaint)
-
-        cv.drawBitmap(State.basket,Matrix().apply { setTranslate(width/1.5f,height-200f) },State.ballPaint)
-
-        cv.withMatrix(State.worldToScreen){
-            //drawBitmap(State.barrel, State.cannonMatrix.also{it.postConcat(State.cannonSetup)} ,null)
-            drawBitmap(State.barrel,
-                State.cannonMatrix ,null)
-            //drawLine(0f,0f,400f,800f, State.ballPaint)
-        }
-
+        with (cv){
         with (State){
-        if (firing) {
-            val now=System.currentTimeMillis()
-            val dt = (now-currentFireTime)*mpp
-            currentFireTime=now
-            ballx+=vx*dt/1000f
-            bally+=vy*dt/1000f
-            vy-=gravity*dt/1000f
-
-            cv.drawLine(maxRange+ cannonWidth,0f, maxRange+ cannonWidth,0f+cv.height, ballPaint)
-
-            cv.withMatrix(worldToScreen){
-                drawCircle(ballx,bally,ballradius,ballPaint)
+            drawBitmap(State.landscape,0f,0f,State.ballPaint)
+            drawBitmap(basket,State.basketMatrix,State.ballPaint)
+            drawText(message,0,State.message.length,100f,100f,State.textPaint)
+            withMatrix(worldToScreen) {
+                drawBitmap(barrel, cannonMatrix, null)
+            }
+            if (firing) {
+                val now=System.currentTimeMillis()
+                val dt = (now-currentFireTime)*mpp
+                currentFireTime=now
+                ballx+=vx*dt/1000f
+                bally+=vy*dt/1000f
+                vy-=gravity*dt/1000f
+                drawLine(maxRange+ cannonWidth,0f, maxRange+ cannonWidth,0f+cv.height, ballPaint)
+                withMatrix(worldToScreen){
+                    drawCircle(ballx,bally,ballradius,ballPaint)
+                }
+                if ((ballx>width) or (bally<0) ) {
+                    firing=false
+                    message="TRY AGAIN..."
                 }
 
-            invalidate()
-            if ((ballx>width) or (bally<0) ){
-                firing=false
-            }
-            Log.i("RANGE", "onDraw: "+ballx+" "+bally)
+                Log.i("GOAL",""+ballx+"  "+basketX*width)
+                if ((abs(ballx-150-basketX*width)<40f) and (bally<90f)) {
+                    message="HIT!"
+                    firing=false
+                }
+                Log.i("RANGE", "onDraw: "+ballx+" "+bally)
         }
-        }
+        } //with state
+        } //with canvas
+        invalidate()
         return
     }
 
@@ -89,6 +91,7 @@ class CannonView(context: Context?) : View(context), View.OnTouchListener {
             MotionEvent.ACTION_MOVE -> {
                 with (State){
                 if (!firing) {
+                    message="PREPARE"
                     val sen = height.toDouble() - event.y
                     val mod = sqrt(pow(sen, 2.0) + pow(event.x.toDouble(), 2.0))
                     a = asin(sen / mod)
@@ -107,7 +110,7 @@ class CannonView(context: Context?) : View(context), View.OnTouchListener {
                 with (State) {
                     if (firing) return true
                     firing = true
-
+                    message="FIRING..."
                     val initialPosition =
                         floatArrayOf(cannonWidth+0f,
                             cannonHeight/2f)
@@ -147,30 +150,16 @@ object State{
     var ballx=0f
     var bally=0f
 
+    val basketX = 0.9f //Where the put the basket
+
     var vx =0f
     var vy= 0f
 
+    var message="PREPARE"
+
     lateinit var landscape : Bitmap
     lateinit var basket : Bitmap
-
-    val ballPaint = Paint().apply {
-        color = Color.parseColor("#AAFF0000")
-        strokeWidth = 1f
-        setShader(RadialGradient(
-            0f,0f,
-            ballradius*0.5f,
-            Color.RED,
-            Color.BLUE,
-            Shader.TileMode.MIRROR))
-        blendMode=BlendMode.MULTIPLY
-        //xfermode=PorterDuffXfermode(PorterDuff.Mode.OVERLAY)
-       // setColorFilter(LightingColorFilter(Color.WHITE,0) )
-    }
-
-
     val mpp = 15f //simulation-time/real-time
-
-    //Kinematics parameters
     var speed = 490*0.277778f //[km]/[s]
     var gravity = 9.8f //[m]^2/[s]
     var maxRange = speed*speed/ gravity
@@ -183,12 +172,31 @@ object State{
 
     var worldToScreen = Matrix()
     var cannonMatrix = Matrix()
-
+    val basketMatrix = Matrix()
 
     var a = 0.0
 
-
     var barrel : Bitmap = createBarrel()
+
+    val ballPaint = Paint().apply {
+        color = Color.parseColor("#AAFF0000")
+        strokeWidth = 1f
+        textSize=30f
+        setShader(RadialGradient(
+            0f,0f,
+            ballradius*0.5f,
+            Color.RED,
+            Color.BLUE,
+            Shader.TileMode.MIRROR))
+        blendMode=BlendMode.MULTIPLY
+        //xfermode=PorterDuffXfermode(PorterDuff.Mode.OVERLAY)
+       // setColorFilter(LightingColorFilter(Color.WHITE,0) )
+    }
+    val textPaint = Paint().also {
+        it.color = Color.parseColor("#AAAA0000")
+        it.strokeWidth = 10f
+        it.textSize=120f
+    }
 
     fun createBarrel():Bitmap {
         val bitmap = Bitmap.createBitmap(
